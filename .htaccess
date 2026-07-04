@@ -1,8 +1,0 @@
-Options -Indexes
-RewriteEngine On
-
-# Route /api/crops to api/crops.php
-RewriteRule ^api/crops$       api/crops.php       [QSA,L]
-RewriteRule ^api/fertilizers$ api/fertilizers.php [QSA,L]
-RewriteRule ^api/evaluations$ api/evaluations.php [QSA,L]
-RewriteRule ^api/users$       api/users.php       [QSA,L]
