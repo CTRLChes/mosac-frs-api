@@ -1,6 +1,6 @@
 <?php
-require_once '../middleware/cors.php';
-require_once '../config/database.php';
+require_once 'cors.php';
+require_once 'database.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 
