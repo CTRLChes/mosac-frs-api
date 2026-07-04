@@ -1,5 +1,5 @@
 <?php
-require_once 'config/database.php';
+require_once 'database.php';
 
 // Simple security token — change this before deploying
 // Visit: your-render-url/setup.php?token=mosac_frs_setup_2025
