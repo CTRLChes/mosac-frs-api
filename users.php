@@ -5,41 +5,85 @@ require_once 'database.php';
 $method = $_SERVER['REQUEST_METHOD'];
 
 switch ($method) {
-    case 'GET':
-        getUsers();
-        break;
+    case 'GET':  getUsers();  break;
+    case 'POST': createUser(); break;
     default:
         http_response_code(405);
         echo json_encode(['success' => false, 'message' => 'Method not allowed']);
 }
 
-// GET all users (admin only — never expose pin_hash or security_answer)
 function getUsers() {
     $db = getConnection();
-
     if (isset($_GET['username'])) {
-        $stmt = $db->prepare('
-            SELECT id, full_name, username, role
-            FROM users
-            WHERE username = ?
-        ');
+        $stmt = $db->prepare('SELECT id, full_name, username, role FROM users WHERE username = ?');
         $stmt->execute([$_GET['username']]);
         $user = $stmt->fetch();
-
         if (!$user) {
             http_response_code(404);
             echo json_encode(['success' => false, 'message' => 'User not found']);
             return;
         }
-
         echo json_encode(['success' => true, 'data' => $user]);
     } else {
-        $stmt = $db->query('
-            SELECT id, full_name, username, role
-            FROM users
-            ORDER BY id DESC
-        ');
-        $users = $stmt->fetchAll();
-        echo json_encode(['success' => true, 'data' => $users]);
+        $stmt = $db->query('SELECT id, full_name, username, role FROM users ORDER BY id DESC');
+        echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
     }
+}
+
+function createUser() {
+    $data = json_decode(file_get_contents('php://input'), true);
+
+    if (!$data) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Invalid JSON body']);
+        return;
+    }
+
+    $required = [
+        'full_name', 'username', 'pin_hash',
+        'security_question', 'security_answer', 'role'
+    ];
+
+    foreach ($required as $field) {
+        if (empty($data[$field])) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => "Missing: $field"]);
+            return;
+        }
+    }
+
+    $db = getConnection();
+
+    // Check if username already exists
+    $check = $db->prepare('SELECT id FROM users WHERE username = ?');
+    $check->execute([$data['username']]);
+    if ($check->fetch()) {
+        echo json_encode([
+            'success'   => true,
+            'message'   => 'User already exists',
+            'duplicate' => true,
+        ]);
+        return;
+    }
+
+    $stmt = $db->prepare('
+        INSERT INTO users (full_name, username, pin_hash, security_question, security_answer, role)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ');
+
+    $stmt->execute([
+        $data['full_name'],
+        $data['username'],
+        $data['pin_hash'],
+        $data['security_question'],
+        $data['security_answer'],
+        $data['role'] ?? 'Farmer',
+    ]);
+
+    http_response_code(201);
+    echo json_encode([
+        'success' => true,
+        'message' => 'User registered successfully',
+        'id'      => $db->lastInsertId(),
+    ]);
 }
