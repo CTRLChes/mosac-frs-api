@@ -5,8 +5,9 @@ require_once 'database.php';
 $method = $_SERVER['REQUEST_METHOD'];
 
 switch ($method) {
-    case 'GET':  getUsers();  break;
-    case 'POST': createUser(); break;
+    case 'GET':    getUsers();    break;
+    case 'POST':   createUser();  break;
+    case 'PUT':    updateUser();  break;
     default:
         http_response_code(405);
         echo json_encode(['success' => false, 'message' => 'Method not allowed']);
@@ -32,18 +33,9 @@ function getUsers() {
 
 function createUser() {
     $data = json_decode(file_get_contents('php://input'), true);
+    if (!$data) { http_response_code(400); echo json_encode(['success' => false, 'message' => 'Invalid JSON']); return; }
 
-    if (!$data) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'Invalid JSON body']);
-        return;
-    }
-
-    $required = [
-        'full_name', 'username', 'pin_hash',
-        'security_question', 'security_answer', 'role'
-    ];
-
+    $required = ['full_name', 'username', 'pin_hash', 'security_question', 'security_answer'];
     foreach ($required as $field) {
         if (empty($data[$field])) {
             http_response_code(400);
@@ -53,24 +45,14 @@ function createUser() {
     }
 
     $db = getConnection();
-
-    // Check if username already exists
     $check = $db->prepare('SELECT id FROM users WHERE username = ?');
     $check->execute([$data['username']]);
     if ($check->fetch()) {
-        echo json_encode([
-            'success'   => true,
-            'message'   => 'User already exists',
-            'duplicate' => true,
-        ]);
+        echo json_encode(['success' => true, 'message' => 'User already exists', 'duplicate' => true]);
         return;
     }
 
-    $stmt = $db->prepare('
-        INSERT INTO users (full_name, username, pin_hash, security_question, security_answer, role)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ');
-
+    $stmt = $db->prepare('INSERT INTO users (full_name, username, pin_hash, security_question, security_answer, role) VALUES (?, ?, ?, ?, ?, ?)');
     $stmt->execute([
         $data['full_name'],
         $data['username'],
@@ -81,9 +63,43 @@ function createUser() {
     ]);
 
     http_response_code(201);
-    echo json_encode([
-        'success' => true,
-        'message' => 'User registered successfully',
-        'id'      => $db->lastInsertId(),
-    ]);
+    echo json_encode(['success' => true, 'message' => 'User registered', 'id' => $db->lastInsertId()]);
+}
+
+function updateUser() {
+    if (!isset($_GET['username'])) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Missing username in query']);
+        return;
+    }
+
+    $data = json_decode(file_get_contents('php://input'), true);
+    if (!$data) { http_response_code(400); echo json_encode(['success' => false, 'message' => 'Invalid JSON']); return; }
+
+    $db = getConnection();
+    $currentUsername = $_GET['username'];
+
+    if (!empty($data['new_username'])) {
+        $check = $db->prepare('SELECT id FROM users WHERE username = ?');
+        $check->execute([$data['new_username']]);
+        if ($check->fetch()) {
+            http_response_code(409);
+            echo json_encode(['success' => false, 'message' => 'Username already taken']);
+            return;
+        }
+        $stmt = $db->prepare('UPDATE users SET username = ? WHERE username = ?');
+        $stmt->execute([$data['new_username'], $currentUsername]);
+        echo json_encode(['success' => true, 'message' => 'Username updated']);
+        return;
+    }
+
+    if (!empty($data['pin_hash'])) {
+        $stmt = $db->prepare('UPDATE users SET pin_hash = ? WHERE username = ?');
+        $stmt->execute([$data['pin_hash'], $currentUsername]);
+        echo json_encode(['success' => true, 'message' => 'PIN updated']);
+        return;
+    }
+
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'Nothing to update']);
 }
