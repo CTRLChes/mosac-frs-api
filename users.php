@@ -15,8 +15,40 @@ switch ($method) {
 
 function getUsers() {
     $db = getConnection();
+
+    // Verify login — checks username + pin_hash match
+    // Used by mobile as fallback when local SQLite has no account after reinstall
+    if (isset($_GET['action']) && $_GET['action'] === 'verify') {
+        $data = json_decode(file_get_contents('php://input'), true);
+        if (empty($data['username']) || empty($data['pin_hash'])) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Missing username or pin_hash']);
+            return;
+        }
+        $stmt = $db->prepare('
+            SELECT id, full_name, username, pin_hash,
+                   security_question, security_answer, role
+            FROM users
+            WHERE username = ? AND pin_hash = ?
+        ');
+        $stmt->execute([$data['username'], $data['pin_hash']]);
+        $user = $stmt->fetch();
+        if (!$user) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Invalid username or PIN']);
+            return;
+        }
+        echo json_encode(['success' => true, 'data' => $user]);
+        return;
+    }
+
+    // Get single user by username (includes security_question for profile restore)
     if (isset($_GET['username'])) {
-        $stmt = $db->prepare('SELECT id, full_name, username, role FROM users WHERE username = ?');
+        $stmt = $db->prepare('
+            SELECT id, full_name, username, pin_hash,
+                   security_question, security_answer, role
+            FROM users WHERE username = ?
+        ');
         $stmt->execute([$_GET['username']]);
         $user = $stmt->fetch();
         if (!$user) {
@@ -25,10 +57,12 @@ function getUsers() {
             return;
         }
         echo json_encode(['success' => true, 'data' => $user]);
-    } else {
-        $stmt = $db->query('SELECT id, full_name, username, role FROM users ORDER BY id DESC');
-        echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
+        return;
     }
+
+    // Get all users (admin use)
+    $stmt = $db->query('SELECT id, full_name, username, role FROM users ORDER BY id DESC');
+    echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
 }
 
 function createUser() {
