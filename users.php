@@ -2,6 +2,32 @@
 require_once 'cors.php';
 require_once 'database.php';
 
+// Handle verify login before method routing
+if (isset($_GET['action']) && $_GET['action'] === 'verify') {
+    $data = json_decode(file_get_contents('php://input'), true);
+    if (empty($data['username']) || empty($data['pin_hash'])) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Missing username or pin_hash']);
+        exit;
+    }
+    $db = getConnection();
+    $stmt = $db->prepare('
+        SELECT id, full_name, username, pin_hash,
+               security_question, security_answer, role
+        FROM users
+        WHERE username = ? AND pin_hash = ?
+    ');
+    $stmt->execute([$data['username'], $data['pin_hash']]);
+    $user = $stmt->fetch();
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'message' => 'Invalid username or PIN']);
+        exit;
+    }
+    echo json_encode(['success' => true, 'data' => $user]);
+    exit;
+}
+
 $method = $_SERVER['REQUEST_METHOD'];
 
 switch ($method) {
@@ -16,9 +42,26 @@ switch ($method) {
 function getUsers() {
     $db = getConnection();
 
-    // Verify login — checks username + pin_hash match
-    // Used by mobile as fallback when local SQLite has no account after reinstall
-    if (isset($_GET['action']) && $_GET['action'] === 'verify') {
+    if (isset($_GET['username'])) {
+        $stmt = $db->prepare('
+            SELECT id, full_name, username, pin_hash,
+                   security_question, security_answer, role
+            FROM users WHERE username = ?
+        ');
+        $stmt->execute([$_GET['username']]);
+        $user = $stmt->fetch();
+        if (!$user) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'User not found']);
+            return;
+        }
+        echo json_encode(['success' => true, 'data' => $user]);
+        return;
+    }
+
+    $stmt = $db->query('SELECT id, full_name, username, role FROM users ORDER BY id DESC');
+    echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
+}
         $data = json_decode(file_get_contents('php://input'), true);
         if (empty($data['username']) || empty($data['pin_hash'])) {
             http_response_code(400);
