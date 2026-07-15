@@ -15,7 +15,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'verify') {
         SELECT id, full_name, username, pin_hash,
                security_question, security_answer, role
         FROM users
-        WHERE username = ? AND pin_hash = ?
+        WHERE LOWER(username) = LOWER(?) AND pin_hash = ?
     ');
     $stmt->execute([$data['username'], $data['pin_hash']]);
     $user = $stmt->fetch();
