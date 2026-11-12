@@ -43,9 +43,11 @@ function getUsers() {
     $db = getConnection();
 
     if (isset($_GET['username'])) {
+        // Secrets (pin_hash, security_answer) are intentionally NOT returned
+        // here. The login flow gets them through ?action=verify, which
+        // requires the correct PIN hash.
         $stmt = $db->prepare('
-            SELECT id, full_name, username, pin_hash,
-                   security_question, security_answer, role
+            SELECT id, full_name, username, role
             FROM users WHERE username = ?
         ');
         $stmt->execute([$_GET['username']]);
@@ -137,6 +139,29 @@ function updateUser() {
     }
 
     if (!empty($data['pin_hash'])) {
+        $stmt = $db->prepare('SELECT pin_hash, security_answer FROM users WHERE username = ?');
+        $stmt->execute([$currentUsername]);
+        $user = $stmt->fetch();
+
+        if (!$user) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'User not found']);
+            return;
+        }
+
+        // A PIN change must prove who is asking: either the correct
+        // security answer (forgot PIN) or the correct current PIN.
+        $answerOk = !empty($data['security_answer'])
+            && hash_equals((string) $user['security_answer'], (string) $data['security_answer']);
+        $pinOk = !empty($data['current_pin_hash'])
+            && hash_equals((string) $user['pin_hash'], (string) $data['current_pin_hash']);
+
+        if (!$answerOk && !$pinOk) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Verification failed']);
+            return;
+        }
+
         $stmt = $db->prepare('UPDATE users SET pin_hash = ? WHERE username = ?');
         $stmt->execute([$data['pin_hash'], $currentUsername]);
         echo json_encode(['success' => true, 'message' => 'PIN updated']);
