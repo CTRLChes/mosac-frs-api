@@ -3,9 +3,8 @@ require_once 'cors.php';
 require_once 'database.php';
 
 // Name of the online table that stores the recommended fertilizers of each
-// evaluation. Expected columns: eval_id, fertilizer_id, rank_position.
-// Change this if your table is named differently.
-const EVAL_FERT_TABLE = 'evaluation_fertilizer';
+// evaluation. Columns: id, eval_id, fertilizer_id, rank_position.
+const EVAL_FERT_TABLE = 'evaluation_fertilizers';
 
 // Only the top 3 recommended fertilizers are stored per evaluation.
 const MAX_FERTILIZERS = 3;
@@ -72,11 +71,18 @@ function saveEvaluationFertilizers($db, $evalId, $fertilizers) {
         return;
     }
 
+    $exists = $db->prepare('SELECT fert_id FROM fertilizer WHERE fert_id = ?');
     $stmt = $db->prepare(
         'INSERT INTO ' . EVAL_FERT_TABLE . ' (eval_id, fertilizer_id, rank_position) VALUES (?, ?, ?)'
     );
     foreach ($fertilizers as $f) {
-        $stmt->execute([$evalId, $f['fertilizer_id'], $f['rank_position']]);
+        // A fertilizer the admin deleted online may still exist on an old
+        // phone. Keep the rank but store NULL so the foreign key does not
+        // reject the whole evaluation.
+        $exists->execute([$f['fertilizer_id']]);
+        $fertId = $exists->fetch() ? $f['fertilizer_id'] : null;
+
+        $stmt->execute([$evalId, $fertId, $f['rank_position']]);
     }
 }
 
